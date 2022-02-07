@@ -1,0 +1,275 @@
+---
+title: "R Data Story"
+author: "Sharon Meng zm2380"
+date: "February 6, 2022"
+output: html_document
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(echo=FALSE)
+```
+
+```{r load_packages, echo=F,message=FALSE, warning=FALSE}
+packages.used=c("rvest", "tibble", "qdap", 
+                "sentimentr", "gplots", "dplyr",
+                "tm", "syuzhet", "factoextra", 
+                "beeswarm", "scales", "RColorBrewer",
+                "RANN", "tm","wordcloud","topicmodels","readtext",
+                "fmsb","tidytext")
+# check packages that need to be installed.
+packages.needed=setdiff(packages.used, 
+                        intersect(installed.packages()[,1], 
+                                  packages.used))
+# install additional packages
+if(length(packages.needed)>0){
+  install.packages(packages.needed, dependencies = TRUE)
+}
+# load packages
+library("rvest")
+library("tibble")
+# You may need to run
+# sudo ln -f -s $(/usr/libexec/java_home)/jre/lib/server/libjvm.dylib /usr/local/lib
+# in order to load qdap
+#library("qdap")
+library("sentimentr")
+library("stringr")
+library("gplots")
+library("dplyr")
+library("tm")
+library("syuzhet")
+library("factoextra")
+library("beeswarm")
+library("scales")
+library("RColorBrewer")
+library("RANN")
+library("tm")
+library("wordcloud")
+library("topicmodels")
+library("readtext")
+library("ggplot2")
+library("MASS")
+library("dplyr")
+library("tidyverse")
+library("fmsb")
+library("tidytext")
+source("./lib/plotstacked.R")
+source("./lib/speechFuncs.R")
+```
+
+```{r read_data_and_summary,echo=F}
+data<-read.csv('./data/philosophy_data.csv',header=T)
+```
+When it comes to the word "philosophy", the first impression that comes may be that philosophy can vary into different genres since thousands of years ago. As there're so many genres in history, we may select several out to check or to investigate whether there's something interesting. From all schools in this dataset, we may find couples of 'contradictory' schools - communism and capitalism, empiricism and rationalism and so on. We may say these couples of schools are contradictory due to our commonsense or knowledge, but does data also support the statement? we know that from text data we may cluster the emotions or find most frequent notional words. Machines can tell the difference, but can they say one is opposite to the other? This remains a mystery if we don't mine the data.
+
+Let's see what will show after the processing and analysis, and we will focus only on the first couple, i.e. the communism and capitalism, and our main question is:
+
+####Can we tell the sentences in schools of capitalism and communism are contradictory based on data?
+
+As a beginning, we may first detect whether the emotions expressed by sentences of two schools are different. We apply the sentiment analysis through following method. When detecting the length of sentences in 2 schools we find them have similar distribution, so we continue with the sentiment analysis.
+
+```{r}
+cap<-data[data$school=='capitalism',]
+com<-data[data$school=='communism',]
+
+#emotions
+word_cap<-str_count(cap$sentence_str,pattern=' ')
+word_com<-str_count(com$sentence_str,pattern=' ')
+#avg_cap<-sum(word_cap)/length(cap[,1])
+#avg_com<-sum(word_com)/length(com[,1])
+par(mfrow=c(1,2))
+hist(word_cap,breaks=30)
+hist(word_com,breaks=30)
+```
+
+We'll analyze the sentiment based on either words or sentences. When we did the sentiment analysis on words, the radar chart shows the average emotion score of feelings appear in each sentence, so we can see from the word aspect that Capitalist may express more about trust and joy than Communism, while communists are more likely be angry, disgusted and fearful, and overall saying, Capitalists are more likely to express more feelings than Communists, but whether we can tell it a difference remains a mystery as we notice the sentences' average length has a difference that capitalists seem to say more than communists.
+
+```{r}
+emo_cap<-get_nrc_sentiment(cap$sentence_str)
+emo_com<-get_nrc_sentiment(com$sentence_str)
+emo_cap<-as.data.frame(diag(1/(word_cap+0.01))%*%as.matrix(emo_cap))
+emo_com<-as.data.frame(diag(1/(word_com+0.01))%*%as.matrix(emo_com))
+sum_cap<-apply(emo_cap,2,sum)/length(cap[,1])
+sum_com<-apply(emo_com,2,sum)/length(com[,1])
+#per_cap<-apply(emo_cap,2,sum)/length(cap[,1])
+#per_com<-apply(emo_com,2,sum)/length(com[,1])
+res<-data.frame(rbind(rep(0.08,10),rep(0,10),sum_cap,sum_com),
+                row.names=c('Max','Min','Capitalism','Communism'))
+radarchart(res[,1:8],axistype=0,pcol=c("#00AFBB","#FC4E07"),
+           pfcol=scales::alpha(c("#00AFBB","#FC4E07"),0.5),plty=1,
+           cglty=2,cglcol="black",cglwd =0.5,
+           title='Radar Chart of sentiments in schools of Capitalism and Communism')
+legend(x="topright",legend=c('Capitalism','Communism'),bty="n",
+       pch=20,col=c("#00AFBB","#FC4E07"),text.col="black",cex=1,
+       pt.cex=1.5)
+res[3:4,9:10]
+```
+
+If we filter out those sentences with nearly no emotion, we may see the average score in 8 emotions of each sentences. It's clear that though the score in capitalism are generally higher than communism, if we focus on the proportion of each emotion, then communists are more likely to express fear, anger and sadness, i.e. negative emotions, and this is consistent with the hypothesis we mentioned above.
+
+```{r}
+means_cap=colMeans(emo_cap[,1:8]>0.005)
+means_com=colMeans(emo_com[,1:8]>0.005)
+col.use=c("red2", "darkgoldenrod1", 
+            "chartreuse3", "blueviolet",
+            "darkgoldenrod2", "dodgerblue3", 
+            "darkgoldenrod1", "darkgoldenrod1")
+barplot(means_cap[order(means_cap)],las=2, col=col.use[order(means_cap)],main="Capitalism sentences")
+barplot(means_com[order(means_com)],las=2, col=col.use[order(means_com)],main="Communism sentences")
+```
+
+In all, if we do the analysis based on words, from the sentiment analysis we may find there's no such a clear difference between the sentiments in sentences of Communism and Capitalism.
+
+Then, if we analyze sentiments based on whole sentences. But noticing that the dataset is of the sentence unit instead of a speech or article unit, we may simply use clustering by hand --- that is, we manually set the group as 8 --- which is the same as the total number of emotions, so we can set a sentence as a specific emotion if the score of that emotion is the highest among all 8.
+
+We filtered out those sentences with no emotions, and we can see the ratio of negative and positive sentences are still related and similar to the result we made before, but we surprisingly found if we look into the sentiments, 'Anger' becomes a majority of sentiment that sentences expressed, even the most sentiment from communists is anger. From the barplots and radar plot made above, we may say though two types of philosophers still express positive feeling to people, communists are more likely to express angry, while capitalists are more willing to say trust. This hypothesis can be important as it may be set as the difference between two schools.
+
+```{r}
+sentence_cluster<-function(sentence,emotion){
+  #sentence:sentence_str;emotion:the matrix of emotion in each sentences
+  sents<-variable.names(emotion)[1:8]
+  emos<-variable.names(emotion)[9:10]
+  anyemo<-apply(emotion>=1e-6,1,any)
+  emotion<-emotion[anyemo,]
+  sentence<-sentence[anyemo]
+  sentiment<-cbind(sents[apply(emotion[,1:8],1,which.max)],apply(emotion[,1:8],1,max))
+  emotion<-cbind(emos[apply(emotion[,9:10],1,which.max)],apply(emotion[,9:10],1,max))
+  return(cbind(sentence,sentiment,emotion))
+}
+
+sent_cap<-data.frame(sentence_cluster(cap$sentence_str,emo_cap))
+sent_com<-data.frame(sentence_cluster(com$sentence_str,emo_com))
+names(sent_cap)<-c('sentence','sentiment','score1','emotion','score2')
+names(sent_com)<-c('sentence','sentiment','score1','emotion','score2')
+
+#barplot
+sent1<-data.frame(as.character(levels(factor(sent_cap$sentiment))),
+                  summary(factor(sent_cap$sentiment),row.names=NULL))
+names(sent1)<-c('sentiment','count')
+sent2<-data.frame(as.character(levels(factor(sent_com$sentiment))),
+                  summary(factor(sent_com$sentiment),row.names=NULL))
+names(sent2)<-c('sentiment','count')
+
+sent1%>%
+  mutate(name=fct_reorder(sentiment,count))%>%
+  ggplot(aes(x=reorder(sentiment,count),y=count))+
+    geom_bar(stat="identity",col=0,fill=4)+
+    theme(axis.text.y=element_text(size=12),title=element_text(size=15),text=element_text(size=12))+
+    labs(title="Capitalism: # of sentences in different sentiments", x="")+
+    geom_text(mapping=aes(label=count))+
+    coord_flip()
+sent2%>%
+  mutate(name=fct_reorder(sentiment,count))%>%
+  ggplot(aes(x=reorder(sentiment,count),y=count))+
+    geom_bar(stat="identity",col=0,fill=4)+
+    theme(axis.text.y=element_text(size=12),title=element_text(size=15),text=element_text(size=12))+
+    labs(title="Communism: # of sentences in different sentiments", x="")+
+    geom_text(mapping=aes(label=count))+
+    coord_flip()
+#radar
+res2<-rbind(rep(0.4,8),rep(0,8),sent1$count/length(sent_cap[,1]),sent2$count/length(sent_com[,1]))
+res2<-as.data.frame(res2)
+names(res2)<-names(emo_cap[,1:8])
+radarchart(res2,axistype=0,pcol=c("#00AFBB","#FC4E07"),
+           pfcol=scales::alpha(c("#00AFBB","#FC4E07"),0.5),plty=1,
+           cglty=2,cglcol="black",cglwd =0.5,
+           title="Radar Chart of sentences' sentiments in schools of Capitalism and Communism")
+legend(x="topright",legend=c('Capitalism','Communism'),bty="n",
+       pch=20,col=c("#00AFBB","#FC4E07"),text.col="black",cex=1,
+       pt.cex=1.5)
+
+summary(factor(sent_cap$emotion))
+summary(factor(sent_com$emotion))
+res[3:4,9:10]
+```
+
+After exploring that there may be some difference in emotions that two schools may have, we then want to figure out will some special words that they say most frequently be consistent to their schools and different with each other. Then we have two ways: The first way is simply calculating the word count and generate the word cloud, and the second way is to compute TF-IDF weighted matrices and then generate the word cloud.
+
+
+```{r,warning=F,message=F}
+sts_cap<-Corpus(VectorSource(cap$sentence_str))
+sts_com<-Corpus(VectorSource(com$sentence_str))
+#Then clear white space, convert to lower case etc.
+sts_cap<-tm_map(sts_cap, stripWhitespace)
+sts_cap<-tm_map(sts_cap, content_transformer(tolower))
+sts_cap<-tm_map(sts_cap, removeWords, stopwords("english"))
+sts_cap<-tm_map(sts_cap, removeWords, character(0))
+sts_cap<-tm_map(sts_cap, removePunctuation)
+
+sts_com<-tm_map(sts_com, stripWhitespace)
+sts_com<-tm_map(sts_com, content_transformer(tolower))
+sts_com<-tm_map(sts_com, removeWords, stopwords("english"))
+sts_com<-tm_map(sts_com, removeWords, character(0))
+sts_com<-tm_map(sts_com, removePunctuation)
+
+tdm_cap<-TermDocumentMatrix(sts_cap)
+tdm_com<-TermDocumentMatrix(sts_com)
+
+#First way
+tdm_cap_tidy<-tidy(tdm_cap)
+tdm_com_tidy<-tidy(tdm_com)
+tdm_cap_all<-summarise(group_by(tdm_cap_tidy,term),sum(count))
+tdm_com_all<-summarise(group_by(tdm_com_tidy,term),sum(count))
+#second way
+dtm_cap<-DocumentTermMatrix(sts_cap,
+                            control = list(weighting=function(x)
+                              weightTfIdf(x,normalize =FALSE),
+                              stopwords = TRUE))
+dtm_com<-DocumentTermMatrix(sts_com,
+                            control = list(weighting=function(x)
+                              weightTfIdf(x,normalize =FALSE),
+                              stopwords = TRUE))
+tdm_cap_tfidf<-tidy(dtm_cap)
+tdm_com_tfidf<-tidy(dtm_com)
+tfidf_cap_all<-summarise(group_by(tdm_cap_tfidf,term),sum(count))
+tfidf_com_all<-summarise(group_by(tdm_com_tfidf,term),sum(count))
+```
+
+And the result comes from two method seem to be similar, and we can see there are some interesting words for two schools: The school of capitalism use the word 'price' most while communists often say 'labour'. We have to say that two words explain part of the core of the schools, that is:
+
+Capitalism means an economic system based on the private ownership and control of the means of production and their operation for profit. Therefore, the minority controls most of the power and wealth, so the words related to price and can somewhat explain the feature of the school. And also, as the minority controls the the majority, there should be a relationship related to employment.
+
+Karl Marx, the creater of communism, advocates class war and lead to a society in which all property is publicly owned and each person works and is paid according to their abilities and needs. Therefore, he stands in the point of the proletariat, so in this sense the school he made will be pleased if the all resources in the society can be distributed by needs and abilities, so they are the groups of people that benefit most. Therefore, the word 'labour' and 'production' can surely stands for the population, so do the words like 'capital' (As people in communism may generate class war and so do their spirit)
+
+```{r,warning=F}
+#wordcloud
+wordcloud(tdm_cap_all$term, tdm_cap_all$`sum(count)`,
+          #scale=c(5,0.5),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.5,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(9,"Reds"))
+wordcloud(tdm_com_all$term, tdm_com_all$`sum(count)`,
+          #scale=c(5,0.5),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.5,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(9,"Blues"))
+wordcloud(tfidf_cap_all$term, tfidf_cap_all$`sum(count)`,
+          #scale=c(5,0.5),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.5,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(9,"Reds"))
+wordcloud(tfidf_com_all$term, tfidf_com_all$`sum(count)`,
+          #scale=c(5,0.5),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.5,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(9,"Blues"))
+```
+
+Therefore, we may come to a conclusion from all the process we did above. When we first focus on the sentimental analysis, we use the word-based and sentence-based analysis. We may not find it different when we analyze the sentiment on words, but when we focus a whole sentence, we may see anger be expressed from communism more as they may generate class war and so do their spirit. Also, it's clear that capitalism express more about money and price as they need to convince people to willingly put majority of power and wealth in the minority to keep the society stable. Then, if we see from the word cloud, we can see the most frequent words from different schools also explains their property respectively, and those words are extremely different. 
+
+As a result, we may answer to the question that put forward in the front, that is, **'Can we tell the sentences in schools of capitalism and communism are contradictory based on data'**, and the answer is definitely yes.
